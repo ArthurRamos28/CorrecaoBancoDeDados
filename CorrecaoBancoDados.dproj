@@ -103,6 +103,8 @@
             <FormType>dfm</FormType>
         </DCCReference>
         <DCCReference Include="dprocess.pas"/>
+        <DCCReference Include="LibUtil.pas"/>
+        <DCCReference Include="LibComuns.pas"/>
         <BuildConfiguration Include="Release">
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>

@@ -10,7 +10,7 @@ uses
   FireDAC.Stan.Def, FireDAC.Phys, FireDAC.Phys.IBDef, FireDAC.Stan.Intf, FireDAC.Stan.Option, FireDAC.Stan.Error,
   FireDAC.UI.Intf, FireDAC.Phys.Intf, FireDAC.Stan.Pool, FireDAC.Stan.Async, FireDAC.VCLUI.Wait, Data.DB,
   FireDAC.Comp.Client, FireDAC.Dapt, FireDAC.Phys.FB, FireDAC.Phys.FBDef, FireDAC.Phys.IBBase, System.Zip, System.UITypes,
-  Winapi.WinSvc, Data.Win.ADODB, System.ImageList, Vcl.ImgList, JclSysUtils, dprocess;
+  Winapi.WinSvc, Data.Win.ADODB, System.ImageList, Vcl.ImgList, JclSysUtils, dprocess, LibUtil;
 
  const
    cgDirBarra = {$IFDEF linux}'/'{$ELSE}'\'{$ENDIF};
@@ -30,8 +30,6 @@ type
     pnlRadio: TPanel;
     pnl1: TPanel;
     con: TFDConnection;
-    edtVersaoBanco: TEdit;
-    lblVersaoBanco: TLabel;
     edtCaminhoBancoFDB: TEdit;
     edtCaminhoBancoFBK: TEdit;
     lblCaminhoFDB: TLabel;
@@ -46,6 +44,8 @@ type
     chkparte1: TCheckBox;
     chkparte2: TCheckBox;
     chkTodos: TCheckBox;
+    btnDataBaseOnline: TButton;
+    btnShutDown: TButton;
     procedure FormCreate(Sender: TObject);
     procedure cbbSenhaChange(Sender: TObject);
     procedure btnIniciarClick(Sender: TObject);
@@ -54,6 +54,9 @@ type
     procedure rbGfixClick(Sender: TObject);
     procedure chkTodosClick(Sender: TObject);
     procedure FormResize(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure btnDataBaseOnlineClick(Sender: TObject);
+    procedure btnShutDownClick(Sender: TObject);
 
 
   private
@@ -64,14 +67,14 @@ type
     fBancoFBK : String;
     fSenha : String;
     fBancoFDBNovo : String;
+    fCaminhoBanco : String;
 
-    procedure Nome;
-    procedure ExecutarGbakParte1;
-    procedure ExecutarGbakParte2;
+    procedure Name;
+    procedure ExecuteGbakOne;
+    procedure ExecuteGbakTwo;
     function Senha: String;
-    function GetFirebirdVersion(databasePath: string): string;
-    procedure ExecutarGfixParte1;
-    procedure ExecutarGfixParte2;
+    procedure ExecuteGfixOne;
+    procedure ExecuteGfixTwo;
     function GetDiretorioExe: String;
     function GetCaminhoArquivo: String;
     function PostBancoNovoFBK: String;
@@ -86,6 +89,9 @@ type
     procedure IniciarEscolha;
     procedure Validacoes;
     procedure Checkbox;
+    procedure Botoes;
+    procedure AtualizaComboBanco;
+    function GetFileSize(const FileName: string): Int64;
 
   end;
 
@@ -95,261 +101,76 @@ var
 
 implementation
 
+
+
 {$R *.dfm}
 
-procedure TuPrincipal.ExecutarGbakParte1;
+procedure TuPrincipal.ExecuteGbakOne;
 var
-  mProcess : TProcess;
   mCmdLine : string;
-  mResposta, mTotalRead : Integer;
-  mOutput : TStringList;
-  mBuffer : array[0..255] of AnsiChar;
-  mBytesRead : DWORD;
 begin
   mmoErro.Lines.Add('Iniciando 1ª parte do Gbak...');
-  mCmdLine := 'gbak -b -l -user SYSDBA -PASS ' + fSenha + ' ' + fNomeBancoFDB + ' ' + fBancoFBK +'.FBK';
+  mCmdLine := 'gbak -b -l -user SYSDBA -PASS ' + fSenha + ' ' + fNomeBancoFDB + ' ' + fBancoFBK;
 
-  mProcess := TProcess.Create(nil);
-  try
-    mProcess.CommandLine := mCmdLine;
-    mProcess.CurrentDirectory := fDiretorioTrabalho;
-    mProcess.Options := [poUsePipes, poNoConsole];
-
-    mProcess.Execute;
-
-    mOutput := TStringList.Create;
-    try
-      mTotalRead := 0;
-      repeat
-        if mProcess.Running then
-          begin
-            mBytesRead := mProcess.Output.Read(mBuffer, SizeOf(mBuffer));
-            if mBytesRead > 0 then
-              begin
-                mBuffer[mBytesRead] := #0;
-                mOutput.Add(mBuffer);
-                mmoErro.Lines.Add(mBuffer);
-              end;
-
-            mBytesRead := mProcess.Stderr.Read(mBuffer, SizeOf(mBuffer));
-            if mBytesRead > 0 then
-              begin
-               mBuffer[mBytesRead] := #0;
-               mOutput.Add(mBuffer);
-               mmoErro.Lines.Add(mBuffer);
-              end;
-          end;
-
-        mTotalRead  := mTotalRead + mBytesRead;
-        Pb.Position := mTotalRead;
-      until
-        (mBytesRead = 0) and (not mProcess.Running);
-
-      if mProcess.ExitStatus <> 0 then
-      begin
-        mOutput.SaveToFile('gbak.txt');
-        ShowMessage('Erro no Gbak!');
-        Exit;
-      end;
-    finally
-     mOutput.Free;
-    end;
-  finally
-    mProcess.Free;
-  end;
+  ExecutarCMD(mCmdLine, fDiretorioTrabalho, mmoErro);
 
   mmoErro.Lines.Add('1ª parte do Gbak concluido...');
 end;
 
-procedure TuPrincipal.ExecutarGbakParte2;
+procedure TuPrincipal.ExecuteGbakTwo;
 var
-  mProcess : TProcess;
-  mCmdLine, mBancoFBKDeletar: string;
-  mResposta, mTotalRead : Integer;
-  mOutput : TStringList;
-  mBuffer : array[0..255] of AnsiChar;
-  mBytesRead : DWORD;
+  mBancoFBKDeletar, mCmdLine : string;
+  mResposta : Integer;
 begin
   mmoErro.Lines.Add('Iniciando 2ª parte do Gbak...');
 
-  if (chkparte2.Checked) then
-    begin
-      fBancoFBK := cbbBanco.Text;
-
-      if (ExtractFileName(fBancoFDBNovo) = ('1'+ fBancoFDBNovo)) then
-        raise EErro.Create('Já tem o banco 1'+ fBancoFDBNovo);
-    end;
-
   mCmdLine := 'gbak -c -r -user SYSDBA -PASS ' + fSenha + ' ' + fBancoFBK + ' 1' + fBancoFDBNovo;
 
-  mProcess := TProcess.Create(nil);
-  try
-    mProcess.CommandLine := mCmdLine;
-    mProcess.CurrentDirectory := fDiretorioTrabalho;
-    mProcess.Options := [poUsePipes, poNoConsole];
-
-    mProcess.Execute;
-
-    mOutput := TStringList.Create;
-    try
-      mTotalRead := 0;
-      repeat
-        if mProcess.Running then
-          begin
-            mBytesRead := mProcess.Output.Read(mBuffer, SizeOf(mBuffer));
-            if mBytesRead > 0 then
-              begin
-                mBuffer[mBytesRead] := #0;
-                mOutput.Add(mBuffer);
-                mmoErro.Lines.Add(mBuffer);
-              end;
-
-            mBytesRead := mProcess.Stderr.Read(mBuffer, SizeOf(mBuffer));
-            if mBytesRead > 0 then
-              begin
-               mBuffer[mBytesRead] := #0;
-               mOutput.Add(mBuffer);
-               mmoErro.Lines.Add(mBuffer);
-              end;
-          end;
-
-        mTotalRead  := mTotalRead + mBytesRead;
-        Pb.Position := mTotalRead;
-      until
-        (mBytesRead = 0) and (not mProcess.Running);
-
-      if mProcess.ExitStatus <> 0 then
-      begin
-        mOutput.SaveToFile('gbak.txt');
-        ShowMessage('Erro no Gbak!');
-        Exit;
-      end;
-    finally
-     mOutput.Free;
+  if chkparte2.Checked then
+    begin
+      fBancoFBK := cbbBanco.Text;
     end;
-  finally
-    mProcess.Free;
-  end;
 
-  mmoErro.Lines.Add('Concluido GBAK');
+  ExecutarCMD(mCmdLine, fDiretorioTrabalho, mmoErro);
+
+  mmoErro.Lines.Add('Concluído GBAK');
 
   mResposta := MessageDlg('Deseja excluir o Banco FBK criado?', mtConfirmation, [mbYes, mbNo], 0);
-   if (mResposta = 6) then
-     begin
-       mBancoFBKDeletar := DeleteBanco;
-       mmoErro.Lines.Add('Excluido o Banco FBK.');
-     end
-   else
-     Exit;
+    if mResposta = 6 then
+      begin
+        mBancoFBKDeletar := DeleteBanco;
+        mmoErro.Lines.Add('Excluído o Banco FBK.');
+      end
+    else
+      Exit;
 end;
 
-procedure TuPrincipal.ExecutarGfixParte1;
+procedure TuPrincipal.ExecuteGfixOne;
 var
-  mProcess : TProcess;
   mCmdLine : string;
-  mResposta : Integer;
   mOutput : TStringList;
-  mBuffer : array[0..255] of AnsiChar;
-  mBytesRead : DWORD;
+  mPrompt : TPromptComand;
 begin
   mmoErro.Lines.Add('Iniciando 1ª parte do Gfix...');
+
   mCmdLine := 'gfix -v -full ' + fNomeBancoFDB + ' -user SYSDBA -PASS ' + fSenha;
 
-  mProcess := TProcess.Create(nil);
-  try
-    mProcess.CommandLine      := mCmdLine;
-    mProcess.CurrentDirectory := fDiretorioTrabalho;
-    mProcess.Options          := [poUsePipes, poNoConsole];
-
-    mProcess.Execute;
-
-    mOutput := TStringList.Create;
-    try
-      repeat
-        mBytesRead := mProcess.Output.Read(mBuffer, SizeOf(mBuffer));
-        if mBytesRead > 0 then
-        begin
-          mBuffer[mBytesRead] := #0;
-          mOutput.Add(mBuffer);
-          mmoErro.Lines.Add(mBuffer);
-        end;
-
-        mBytesRead := mProcess.Stderr.Read(mBuffer, SizeOf(mBuffer));
-        if mBytesRead > 0 then
-        begin
-          mBuffer[mBytesRead] := #0;
-          mOutput.Add(mBuffer);
-          mmoErro.Lines.Add(mBuffer);
-        end;
-      until (mBytesRead = 0) and not (mProcess.Running);
-
-      if mProcess.ExitStatus <> 0 then
-        begin
-          mOutput.SaveToFile('gfix.txt');
-          ShowMessage('Erro no Gfix!');
-          Exit;
-        end;
-    finally
-      mOutput.Free;
-    end;
-  finally
-    mProcess.Free;
-  end;
+  ExecutarCMD(mCmdLine, fDiretorioTrabalho, mmoErro);
 
   mmoErro.Lines.Add('1ª parte do Gfix concluido...');
 end;
 
-procedure TuPrincipal.ExecutarGfixParte2;
+procedure TuPrincipal.ExecuteGfixTwo;
 var
-  mProcess : TProcess;
   mCmdLine : string;
   mOutput : TStringList;
-  mBuffer : array[0..255] of AnsiChar;
-  mBytesRead : DWORD;
 begin
   mmoErro.Lines.Add('Iniciando 2ª parte do Gfix...');
+
   mCmdLine := 'gfix -m -i ' + fNomeBancoFDB + ' -user SYSDBA -PASS ' + fSenha;
 
-  mProcess := TProcess.Create(nil);
-  try
-    mProcess.CommandLine := mCmdLine;
-    mProcess.CurrentDirectory := fDiretorioTrabalho;
-    mProcess.Options := [poUsePipes, poNoConsole];
+  ExecutarCMD(mCmdLine, fDiretorioTrabalho, mmoErro);
 
-    mProcess.Execute;
-
-    mOutput := TStringList.Create;
-    try
-      repeat
-        mBytesRead := mProcess.Output.Read(mBuffer, SizeOf(mBuffer));
-        if mBytesRead > 0 then
-        begin
-          mBuffer[mBytesRead] := #0;
-          mOutput.Add(mBuffer);
-          mmoErro.Lines.Add(mBuffer);
-        end;
-
-        mBytesRead := mProcess.Stderr.Read(mBuffer, SizeOf(mBuffer));
-        if mBytesRead > 0 then
-        begin
-          mBuffer[mBytesRead] := #0;
-          mOutput.Add(mBuffer);
-          mmoErro.Lines.Add(mBuffer);
-        end;
-      until (mBytesRead = 0) and not (mProcess.Running);
-
-      if mProcess.ExitStatus <> 0 then
-        begin
-          mOutput.SaveToFile('gfix.txt');
-          ShowMessage('Erro no Gfix!');
-          Exit;
-        end;
-    finally
-      mOutput.Free;
-    end;
-  finally
-    mProcess.Free;
-  end;
   mmoErro.Lines.Add('Concluido');
 end;
 
@@ -359,56 +180,60 @@ begin
     begin
       if  chkTodos.Checked then
         begin
-          ExecutarGbakParte1;
-          ExecutarGbakParte2;
+          ExecuteGbakOne;
+          Sleep(30000);
+          ExecuteGbakTwo;
         end
 
       else if chkparte1.Checked then
         begin
-          ExecutarGbakParte1;
+          ExecuteGbakOne;
         end
 
       else if chkparte2.Checked then
         begin
-           ExecutarGbakParte2;
+          ExecuteGbakTwo;
         end;
     end
   else if (rbGfix.Checked) then
     begin
       if chkTodos.Checked then
         begin
-          ExecutarGfixParte1;
-          ExecutarGfixParte2;
+          ExecuteGfixOne;
+          ExecuteGfixTwo;
         end
 
       else if chkparte1.Checked then
         begin
-          ExecutarGfixParte1;
+          ExecuteGfixOne;
         end
 
       else if chkparte2.Checked then
         begin
-          ExecutarGfixParte2;
+          ExecuteGfixTwo;
         end;
     end;
 end;
 
+procedure TuPrincipal.btnDataBaseOnlineClick(Sender: TObject);
+begin
+  if (UpperCase(ExtractFileExt(cbbBanco.Text)) = '.FDB') then
+    DateBaseOnline;
+end;
+
 procedure TuPrincipal.btnIniciarClick(Sender: TObject);
 begin
-  cbbBanco.Enabled := False;
+  mmoErro.Lines.Clear;
+  Validacoes;
+  CopiarBanco;
+  IniciarEscolha;
+  Botoes;
+end;
 
-  try
-    Validacoes;
-    CopiarBanco;
-    IniciarEscolha;
-  except
-    on E: EErro do
-    begin
-      ShowMessage(E.Message);
-      cbbBanco.Enabled := True;
-      Exit;
-    end;
-  end;
+procedure TuPrincipal.btnShutDownClick(Sender: TObject);
+begin
+  if (UpperCase(ExtractFileExt(cbbBanco.Text)) = '.FDB') then
+    ShutdownBanco;
 end;
 
 procedure TuPrincipal.Validacoes;
@@ -432,23 +257,21 @@ begin
   mResposta := MessageDlg('Você já parou o Server?', mtConfirmation, [mbYes, mbNo], 0);
   if (mResposta = 7) then
     raise EErro.Create('Interrompa o Server');
+
   {$Region 'Gbak'}
   if (rbGbak.Checked) then
     begin
-      if (chkparte1.Checked) and (UpperCase(ExtractFileExt(cbbBanco.Text)) = '.FBK') then
-        raise EErro.Create('O banco .FBK não é valido para método marcado')
+      if ((chkparte1.Checked) or (chkTodos.Checked)) and (UpperCase(ExtractFileExt(cbbBanco.Text)) = '.FBK') then
+        raise EErro.Create('O banco .FBK não é valido para método marcado');
 
-      else if (chkparte2.Checked) and (UpperCase(ExtractFileExt(cbbBanco.Text)) = '.FDB') then
+      if (chkparte2.Checked) and (not chkparte1.Checked) and (UpperCase(ExtractFileExt(cbbBanco.Text)) = '.FDB') then
         raise EErro.Create('O banco FDB não é valido para método marcado');
 
-      if (FileExists(fBancoFBK)) and (not chkparte2.Checked) then
-        raise EErro.Create('Já possui na pasta o ' + fBancoFBK)
+      if  ((chkparte1.Checked) or (chkTodos.Checked)) and (FileExists(fBancoFBK)) then
+        raise EErro.Create('Já possui na pasta o ' + fBancoFBK);
 
-      else if (FileExists('1'+ fNomeBancoFDB)) and (not chkparte2.Checked) then
-        raise EErro.Create('Já possui na pasta o 1' + fNomeBancoFDB);
-
-      if (chkparte2.Checked) and (FileExists(fBancoFDBNovo)) then
-        raise EErro.Create('Já possui na pasta o ' + fBancoFDBNovo);
+      if (chkparte2.Checked) and (FileExists('1'+ fBancoFDBNovo)) then
+        raise EErro.Create('Já possui na pasta o 1' + fBancoFDBNovo);
 
       if ((chkTodos.Checked) or (chkparte1.Checked)) and (UpperCase(ExtractFileExt(cbbBanco.Text)) = '.FBK') then
        begin
@@ -474,25 +297,47 @@ begin
   {$EndRegion}
 end;
 
-Procedure TuPrincipal.CopiarBanco;
+function TuPrincipal.GetFileSize(const FileName: string): Int64;
 var
-  mCaminhoBDOrigem, mCaminhoBDDestino, mArquivoDestino, mExtensao : String;
-  ZipFile : TZipFile;
+  FileInfo: TWin32FileAttributeData;
 begin
-  mArquivoDestino := GetDiretorioExe + 'Backup\'+ FormatDateTime('dd-mm-yyyy', Date) + 'Hotel_BKP.ZIP';
+  if not GetFileAttributesEx(PChar(FileName), GetFileExInfoStandard, @FileInfo) then
+    RaiseLastOSError;
+  Int64Rec(Result).Lo := FileInfo.nFileSizeLow;
+  Int64Rec(Result).Hi := FileInfo.nFileSizeHigh;
+end;
+
+procedure TuPrincipal.CopiarBanco;
+var
+  mCaminhoBDOrigem, mCaminhoBDDestino, mArquivoDestino, mExtensao: String;
+  ZipFile: TZipFile;
+  FileSize: Int64;
+const
+  MaxFileSizeToZip: Int64 = Int64(2) * Int64(1024) * Int64(1024) * Int64(1024); // 2 GB em bytes
+begin
+  mArquivoDestino := GetDiretorioExe + 'Backup\' + FormatDateTime('dd-mm-yyyy', Date) + 'Hotel_BKP.ZIP';
   mExtensao := UpperCase(ExtractFileExt(cbbBanco.Text));
 
   if mExtensao = '.FBK' then
     Exit;
 
-  if (FileExists(mArquivoDestino)) then
+  if FileExists(mArquivoDestino) then
     Exit;
 
-  if Assigned(mmoErro) then
-    mmoErro.Lines.Add('Iniciando cópia do banco de dados');
-
-  mCaminhoBDOrigem  := GetCaminhoArquivo + cbbBanco.Text;
+  mmoErro.Lines.Add('Iniciando cópia do banco');
+  mCaminhoBDOrigem := GetCaminhoArquivo + cbbBanco.Text;
   mCaminhoBDDestino := CriarBackup;
+
+  // Verificar o tamanho do arquivo
+  FileSize := GetFileSize(mCaminhoBDOrigem);
+  if FileSize > MaxFileSizeToZip then
+  begin
+    // O arquivo é maior que 2 GB, não fazer o zipeamento
+    if Assigned(mmoErro) then
+      CopyFile(PChar(mCaminhoBDOrigem), PChar(GetDiretorioExe + 'Backup\' + FormatDateTime('dd-mm-yyyy', Date) + 'Hotel_BKP.fdb'), False);
+      mmoErro.Lines.Add('Arquivo maior que 2 GB. Não será zipeado.');
+    Exit;
+  end;
 
   ZipFile := TZipFile.Create;
   try
@@ -506,12 +351,10 @@ begin
 end;
 
 procedure TuPrincipal.cbbBancoChange(Sender: TObject);
-var
-  mCaminhoBanco : String;
 begin
-  mCaminhoBanco           := GetCaminhoArquivo + cbbBanco.Text;
   edtCaminhoBancoFBK.Text := PostBancoNovoFBK;
-  edtCaminhoBancoFDB.Text := mCaminhoBanco;
+  edtCaminhoBancoFDB.Text := GetCaminhoArquivo + cbbBanco.Text;
+  fNomeBancoFDB := cbbBanco.Text;
 end;
 
 procedure TuPrincipal.cbbSenhaChange(Sender: TObject);
@@ -519,6 +362,8 @@ begin
   if (cbbSenha.ItemIndex = 2) then
     edtSenha.Visible       := True
   else edtSenha.Visible    := False;
+
+  fSenha := Senha;
 end;
 
 procedure TuPrincipal.Checkbox;
@@ -540,25 +385,31 @@ end;
 procedure TuPrincipal.chkTodosClick(Sender: TObject);
 begin
   Checkbox;
+  AtualizaComboBanco;
+end;
+
+procedure TuPrincipal.FormClose(Sender: TObject; var Action: TCloseAction);
+var
+  ProcessInfo : TProcessInformation;
+begin
+  TerminateProcess(ProcessInfo.hProcess, 0);
 end;
 
 procedure TuPrincipal.FormCreate(Sender: TObject);
-var
-  mCaminhoBanco, mCaminhobancoFBK, mDiretorioTrabalho : String;
 begin
-  CarregaNomeBancoComboBox(mDiretorioTrabalho, cbbBanco);
+  CarregaNomeBancoComboBox(fDiretorioTrabalho, cbbBanco);
   Checkbox;
-  Nome;
+  Name;
+  fSenha             := Senha;
+  fDiretorioTrabalho := GetDiretorioExe;
+  fCaminhoBanco      := GetCaminhoArquivo + cbbBanco.Text;
+  fNomeBancoFDB      := cbbBanco.Text;
 
-  mCaminhoBanco      := GetCaminhoArquivo + cbbBanco.Text;
-  mCaminhobancoFBK   := PostBancoNovoFBK;
-  mDiretorioTrabalho := GetDiretorioExe;
+  edtCaminhoBancoFDB.Text := fCaminhoBanco;
+  edtCaminhoBancoFBK.Text := PostBancoNovoFBK;
 
-  edtCaminhoBancoFDB.Text := mCaminhoBanco;
-  edtCaminhoBancoFBK.Text := mCaminhoBancoFBK;
-  edtVersaoBanco.text     := GetFirebirdVersion(mCaminhoBanco);
 
-  cbbBanco.OnChange := cbbBancoChange;
+  AtualizaComboBanco;
 end;
 
 procedure TuPrincipal.FormResize(Sender: TObject);
@@ -569,13 +420,12 @@ begin
   Constraints.MaxHeight := 483;
 end;
 
-procedure TuPrincipal.Nome;
+procedure TuPrincipal.Name;
 begin
   lblCaminhoFDB.Caption  := 'Caminho do Banco FDB';
   lblCaminhoFBK.Caption  := 'Banco FBK';
   lblSenha.Caption       := 'Senha do banco';
   btnIniciar.Caption     := 'Iniciar';
-  lblVersaoBanco.Caption := 'Versão FB';
 
   if rbGbak.Checked then
     begin
@@ -598,46 +448,10 @@ end;
 function TuPrincipal.Senha: String;
 begin
    case cbbSenha.ItemIndex of
-     0 : Result := '1';
+     0 : Result := '123';
      1 : Result := 'masterkey';
      2 : Result := edtSenha.Text;
    end;
-end;
-
-function TuPrincipal.GetFirebirdVersion(databasePath: string): string;
-var
-  mCon : TFDConnection;
-  mQuery : TFDQuery;
-  mCaminhoBanco : String;
-begin
-  fDiretorioTrabalho := GetDiretorioExe;
-  fNomeBancoFDB      := cbbBanco.Text;
-  fSenha             := Senha;
-  mCaminhoBanco      := GetCaminhoArquivo;
-
-  if fNomeBancoFDB = 'Não Encontrado' then
-    exit;
-
-  //DateBaseOnline;
-
-  mCon := TFDConnection.Create(nil);
-  mQuery := TFDQuery.Create(nil);
-  try
-    mCon.DriverName := 'FB';
-    mCon.Params.Add('Database='+ mCaminhoBanco + fNomeBancoFDB);
-    mCon.Params.Add('User_Name=SYSDBA');
-    mCon.Params.Add('Password='+ fSenha);
-    mCon.Open;
-
-    mQuery.Connection := mCon;
-    mQuery.SQL.Text := 'SELECT rdb$get_context(''SYSTEM'', ''ENGINE_VERSION'') FROM rdb$database';
-    mQuery.Open;
-
-    Result := mQuery.Fields[0].AsString;
-  finally
-    mQuery.Free;
-    mCon.Free;
-  end;
 end;
 
 function TuPrincipal.GetDiretorioExe: String;
@@ -653,17 +467,17 @@ end;
 
 function TuPrincipal.PostBancoNovoFBK: String;
 begin
-  Result := ChangeFileExt(cbbBanco.Text, '');;
+  Result := ChangeFileExt(cbbBanco.Text, '.FBK');;
 end;
 
 procedure TuPrincipal.rbGbakClick(Sender: TObject);
 begin
-  Nome;
+  Name;
 end;
 
 procedure TuPrincipal.rbGfixClick(Sender: TObject);
 begin
-  Nome;
+  Name;
 end;
 
 function TuPrincipal.CriarBackup: String;
@@ -676,7 +490,7 @@ end;
 
 function TuPrincipal.DeleteBanco: String;
 begin
-  Result := GetDiretorioExe + 'Hotel.FBK';
+  Result := GetDiretorioExe + fBancoFBK;
 
   if FileExists(Result) then
     DeleteFile(Result);
@@ -684,62 +498,26 @@ end;
 
 procedure TuPrincipal.ShutdownBanco;
 var
-  StartupInfo : TStartupInfo;
-  ProcessInfo : TProcessInformation;
   mCmdLine : string;
+  mOutput : TStringList;
+  mPrompt : TPromptComand;
 begin
-  FillChar(StartupInfo, SizeOf(StartupInfo), 0);
-  StartupInfo.cb := SizeOf(StartupInfo);
   mCmdLine := 'gfix -shut full -force 0 ' + fNomeBancoFDB + ' -user SYSDBA -PASS ' + fSenha;
 
-  ChDir(PChar(fDiretorioTrabalho));
-
-  StartupInfo.cb := SizeOf(StartupInfo);
-  StartupInfo.dwFlags := STARTF_USESHOWWINDOW;
-  StartupInfo.wShowWindow := SW_HIDE;
-
-  if not CreateProcess(nil, PChar(mCmdLine), nil, nil, False, CREATE_NO_WINDOW, nil, nil, StartupInfo, ProcessInfo) then
-    begin
-      RaiseLastOSError;
-      mmoErro.Lines.Add('Erro');
-      Exit;
-    end;
-
-  WaitForSingleObject(ProcessInfo.hProcess, INFINITE);
-
-  CloseHandle(ProcessInfo.hProcess);
-  CloseHandle(ProcessInfo.hThread);
+  ExecutarCMD(mCmdLine, fDiretorioTrabalho, mmoErro);
 
   mmoErro.Lines.Add('Shutdown realizado!');
 end;
 
 procedure TuPrincipal.DateBaseOnline;
-var
-  StartupInfo : TStartupInfo;
-  ProcessInfo : TProcessInformation;
+ var
   mCmdLine : string;
+  mOutput : TStringList;
+  mPrompt : TPromptComand;
 begin
-  FillChar(StartupInfo, SizeOf(StartupInfo), 0);
-  StartupInfo.cb := SizeOf(StartupInfo);
   mCmdLine := 'gfix -online multi ' + fNomeBancoFDB + ' -user SYSDBA -PASS ' + fSenha;
 
-  ChDir(PChar(fDiretorioTrabalho));
-
-  StartupInfo.cb := SizeOf(StartupInfo);
-  StartupInfo.dwFlags := STARTF_USESHOWWINDOW;
-  StartupInfo.wShowWindow := SW_HIDE;
-
-  if not CreateProcess(nil, PChar(mCmdLine), nil, nil, False, CREATE_NO_WINDOW, nil, nil, StartupInfo, ProcessInfo) then
-    begin
-      RaiseLastOSError;
-      mmoErro.Lines.Add('Erro');
-      Exit;
-    end;
-
-  WaitForSingleObject(ProcessInfo.hProcess, INFINITE);
-
-  CloseHandle(ProcessInfo.hProcess);
-  CloseHandle(ProcessInfo.hThread);
+  ExecutarCMD(mCmdLine, fDiretorioTrabalho, mmoErro);
 
   mmoErro.Lines.Add('Database Online!');
 end;
@@ -766,7 +544,7 @@ begin
           Result.Add(mNomeBanco);
         until FindNext(mProcura) <> 0;
       end;
-    FindClose (mProcura);
+    FindClose(mProcura);
   except
     Result.Free;
     raise;
@@ -802,6 +580,17 @@ begin
   chkTodos.Checked  := False;
 end;
 
+Procedure TuPrincipal.Botoes;
+begin
+  cbbSenha.Enabled   := True;
+  cbbBanco.Enabled   := True;
+  AtualizaComboBanco;
+end;
+
+procedure TuPrincipal.AtualizaComboBanco;
+begin
+  cbbBanco.OnChange := cbbBancoChange;
+end;
 
 end.
 

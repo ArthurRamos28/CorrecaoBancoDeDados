@@ -19,6 +19,7 @@ object uPrincipal: TuPrincipal
   PrintScale = poPrintToFit
   Scaled = False
   ScreenSnap = True
+  OnClose = FormClose
   OnCreate = FormCreate
   OnResize = FormResize
   PixelsPerInch = 96
@@ -41,19 +42,11 @@ object uPrincipal: TuPrincipal
         662
         414)
       object lblSenha: TLabel
-        Left = 512
+        Left = 285
         Top = 81
         Width = 64
         Height = 13
         Caption = 'lblBancoInicio'
-      end
-      object lblVersaoBanco: TLabel
-        Left = 7
-        Top = 81
-        Width = 72
-        Height = 13
-        Anchors = [akLeft]
-        Caption = 'lblVersaoBanco'
       end
       object lblCaminhoFDB: TLabel
         Left = 7
@@ -70,7 +63,7 @@ object uPrincipal: TuPrincipal
         Caption = 'lblBancoFBK'
       end
       object lblNomeBanco: TLabel
-        Left = 188
+        Left = 7
         Top = 81
         Width = 59
         Height = 13
@@ -118,24 +111,24 @@ object uPrincipal: TuPrincipal
         end
       end
       object edtSenha: TEdit
-        Left = 512
-        Top = 129
+        Left = 474
+        Top = 100
         Width = 129
         Height = 21
         Anchors = [akRight]
         AutoSize = False
-        TabOrder = 5
+        TabOrder = 4
         Visible = False
       end
       object cbbSenha: TComboBox
-        Left = 512
-        Top = 101
+        Left = 285
+        Top = 100
         Width = 129
         Height = 22
         Style = csOwnerDrawVariable
         Anchors = [akRight]
         ItemIndex = 0
-        TabOrder = 4
+        TabOrder = 3
         Text = 'Senha Silbeck'
         OnChange = cbbSenhaChange
         Items.Strings = (
@@ -144,43 +137,34 @@ object uPrincipal: TuPrincipal
           'Outras')
       end
       object btnIniciar: TButton
-        Left = 528
+        Left = 443
         Top = 199
-        Width = 113
+        Width = 203
         Height = 33
         Anchors = [akRight]
         Caption = 'btnIniciar'
-        TabOrder = 7
+        TabOrder = 6
         OnClick = btnIniciarClick
       end
       object edtCaminhoBancoFDB: TEdit
         Left = 4
         Top = 156
-        Width = 504
+        Width = 433
         Height = 21
         Anchors = [akLeft]
         AutoSize = False
         Enabled = False
-        TabOrder = 6
+        TabOrder = 5
       end
       object edtCaminhoBancoFBK: TEdit
         Left = 4
         Top = 208
-        Width = 509
+        Width = 433
         Height = 21
         Anchors = [akLeft]
         AutoSize = False
         Enabled = False
-        TabOrder = 8
-      end
-      object edtVersaoBanco: TEdit
-        Left = 7
-        Top = 100
-        Width = 72
-        Height = 21
-        Anchors = [akLeft]
-        Enabled = False
-        TabOrder = 2
+        TabOrder = 7
       end
       object mmoErro: TMemo
         Left = 1
@@ -199,14 +183,14 @@ object uPrincipal: TuPrincipal
         Lines.Strings = (
           '')
         ParentFont = False
-        TabOrder = 9
+        TabOrder = 8
       end
       object cbbBanco: TComboBox
-        Left = 188
+        Left = 7
         Top = 100
         Width = 201
         Height = 21
-        TabOrder = 3
+        TabOrder = 2
         Text = 'cbbBanco'
         OnChange = cbbBancoChange
       end
@@ -242,6 +226,24 @@ object uPrincipal: TuPrincipal
           TabOrder = 0
           OnClick = chkTodosClick
         end
+      end
+      object btnDataBaseOnline: TButton
+        Left = 441
+        Top = 156
+        Width = 97
+        Height = 25
+        Caption = 'DataBase Online'
+        TabOrder = 9
+        OnClick = btnDataBaseOnlineClick
+      end
+      object btnShutDown: TButton
+        Left = 549
+        Top = 156
+        Width = 97
+        Height = 25
+        Caption = 'Shutdown'
+        TabOrder = 10
+        OnClick = btnShutDownClick
       end
     end
     object pnlBarra: TPanel
